@@ -1,0 +1,3 @@
+local SettingsModule = {}
+
+return SettingsModule
