@@ -94,7 +94,8 @@ local state = {
         currentX = 0,
         currentY = 0,
         height = Config.CameraConfig.DefaultHeight
-    }
+    },
+    cameraConnection = nil
 }
 
 -- Animation handling
@@ -214,6 +215,20 @@ local function stopMouseControl()
     UserInputService.MouseBehavior = Enum.MouseBehavior.Default
 end
 
+-- Add this function after the state variables (around line 98)
+local function initializeCamera()
+    local currentCameraCFrame = camera.CFrame
+    local _, currentY, currentX = currentCameraCFrame:ToOrientation()
+    
+    -- Convert from radians to degrees and adjust for the coordinate system
+    state.cameraConfig.currentX = math.deg(currentX)
+    state.cameraConfig.currentY = math.deg(-currentY)
+    
+    -- Set initial camera rotation
+    state.currentCameraRotation = currentCameraCFrame
+    state.targetCameraRotation = currentCameraCFrame
+end
+
 -- Public API
 function FlyingClient:Start()
     if state.isFlying then return end
@@ -222,6 +237,9 @@ function FlyingClient:Start()
     StartFlyingRemote:FireServer()
     startMouseControl()
     playAnimation("idle")
+    
+    -- Initialize camera before starting the update loop
+    initializeCamera()
     
     RunService:BindToRenderStep("FlyingUpdate", Enum.RenderPriority.Character.Value, function(deltaTime)
         updateMovement(deltaTime)
@@ -236,10 +254,19 @@ function FlyingClient:Stop()
     StopFlyingRemote:FireServer()
     stopMouseControl()
     
-    if state.currentAnimation then
-        state.currentAnimation:Stop(0)
-        state.currentAnimation = nil
+    -- Stop all current animations with proper fade out
+    local animator = humanoid:FindFirstChild("Animator")
+    if animator then
+        for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+            track:Stop(0.3) -- Add a smooth 0.3 second fade out
+        end
     end
+    
+    -- Reset animation state
+    state.currentAnimation = nil
+    
+    -- Reset camera behavior
+    camera.CameraType = Enum.CameraType.Custom
     
     RunService:UnbindFromRenderStep("FlyingUpdate")
 end
@@ -254,5 +281,72 @@ player.CharacterRemoving:Connect(function()
         FlyingClient:Stop()
     end
 end)
+
+-- In your client flying module
+local function handleUpdateMovement(action)
+    if action == "PlayFlyingAnimation" then
+        -- existing animation code
+    elseif action == "PlayIdleAnimation" then
+        -- existing animation code
+    elseif action == "AdjustCamera" then
+        local camera = workspace.CurrentCamera
+        local player = game.Players.LocalPlayer
+        local character = player.Character
+        
+        if character then
+            -- Switch to custom camera mode
+            camera.CameraType = Enum.CameraType.Custom
+            
+            -- Create a cinematic camera effect
+            local startTime = os.clock()
+            local duration = 2.5 -- Total animation duration
+            local initialHeight = character.HumanoidRootPart.Position.Y
+            
+            -- Disconnect previous connection if it exists
+            if state.cameraConnection then
+                state.cameraConnection:Disconnect()
+            end
+            
+            -- Create a connection to update the camera
+            state.cameraConnection = game:GetService("RunService").RenderStepped:Connect(function()
+                local elapsed = os.clock() - startTime
+                local alpha = math.min(elapsed / duration, 1)
+                
+                -- Calculate rotation angle (two full rotations)
+                local angle = alpha * (4 * math.pi)
+                
+                -- Calculate camera position
+                local radius = 20 + (alpha * 10) -- Gradually increase distance
+                local height = 8 + (alpha * 12) -- Gradually increase height
+                
+                -- Calculate offset based on sine wave for smooth circular motion
+                local offsetX = math.sin(angle) * radius
+                local offsetZ = math.cos(angle) * radius
+                
+                -- Get current character position
+                local characterPos = character.HumanoidRootPart.Position
+                
+                -- Create camera position and target
+                local cameraPos = Vector3.new(
+                    characterPos.X + offsetX,
+                    characterPos.Y + height,
+                    characterPos.Z + offsetZ
+                )
+                
+                -- Update camera
+                camera.CFrame = CFrame.lookAt(cameraPos, characterPos)
+                
+                -- Disconnect once animation is complete
+                if alpha >= 1 then
+                    state.cameraConnection:Disconnect()
+                    state.cameraConnection = nil
+                end
+            end)
+        end
+    end
+end
+
+-- Make sure this is connected to your UpdateMovementRemote
+UpdateMovementRemote.OnClientEvent:Connect(handleUpdateMovement)
 
 return FlyingClient

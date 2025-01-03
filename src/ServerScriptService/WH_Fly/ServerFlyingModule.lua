@@ -94,9 +94,22 @@ end
 
 function ServerFlyingModule:StartFlying()
     if self.IsFlying then return end
+    
+    -- Notify client to adjust camera before launch
+    UpdateMovementRemote:FireClient(self.Player, "AdjustCamera")
+    
+    -- Add initial rocket propulsion
+    local initialLaunch = Instance.new("BodyVelocity")
+    initialLaunch.MaxForce = Vector3.new(0, math.huge, 0)
+    initialLaunch.Velocity = Vector3.new(0, 100, 0)
+    initialLaunch.Parent = self.HumanoidRootPart
+    
+    -- Wait for the launch
+    task.wait(0.8)
+    initialLaunch:Destroy()
+    
+    -- Continue with normal flying setup
     self.IsFlying = true
-
-    -- Disable default animations
     self.Humanoid.AutoRotate = false
     -- Store original states to restore later
     self.OriginalJumpPower = self.Humanoid.JumpPower
