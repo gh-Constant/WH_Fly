@@ -76,7 +76,7 @@ local Config = {
 }
 
 -- Get remotes
-local FlyingRemotes = ReplicatedStorage:WaitForChild("FlyingRemotes")
+local FlyingRemotes = ReplicatedStorage.WH_Fly:WaitForChild("FlyingRemotes")
 local StartFlyingRemote = FlyingRemotes:WaitForChild("StartFlying")
 local StopFlyingRemote = FlyingRemotes:WaitForChild("StopFlying")
 local UpdateMovementRemote = FlyingRemotes:WaitForChild("UpdateMovement")

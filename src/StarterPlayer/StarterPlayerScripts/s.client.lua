@@ -1,16 +1,22 @@
--- Example usage in a LocalScript
-local FlyingClient = require(game.ReplicatedStorage.Modules.FlyingClient)
-
--- You can bind it to any event or input you want
+-- ClientFlyingScript in StarterPlayerScripts
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 
-UserInputService.InputBegan:Connect(function(input, processed)
-    if processed then return end
-    if input.KeyCode == Enum.KeyCode.F then
-        if not FlyingClient:IsFlying() then
-            FlyingClient:Start()
-        else
-            FlyingClient:Stop()
-        end
+-- Get the FlyClient module
+local FlyClient = require(ReplicatedStorage.WH_Fly.FlyClient)
+
+-- Create a simple interface to start/stop flying
+local function onFlyActivated()
+    if FlyClient:IsFlying() then
+        FlyClient:Stop()
+    else
+        FlyClient:Start()
     end
-end)
+end
+
+-- Bind to F key for flying
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if not gameProcessed and input.KeyCode == Enum.KeyCode.F then
+        onFlyActivated()
+    end
+end) 

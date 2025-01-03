@@ -6,23 +6,6 @@ local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
--- Create remote events
-local Remotes = Instance.new("Folder")
-Remotes.Name = "FlyingRemotes"
-Remotes.Parent = ReplicatedStorage
-
-local StartFlyingRemote = Instance.new("RemoteEvent")
-StartFlyingRemote.Name = "StartFlying"
-StartFlyingRemote.Parent = Remotes
-
-local StopFlyingRemote = Instance.new("RemoteEvent")
-StopFlyingRemote.Name = "StopFlying"
-StopFlyingRemote.Parent = Remotes
-
-local UpdateMovementRemote = Instance.new("RemoteEvent")
-UpdateMovementRemote.Name = "UpdateMovement"
-UpdateMovementRemote.Parent = Remotes
-
 -- Store active flying players
 local ActiveFlyers = {}
 
@@ -41,6 +24,11 @@ function ServerFlyingModule.new(player)
     self.MovementThreshold = 0.1
     return self
 end
+
+local FlyingRemotes = ReplicatedStorage.WH_Fly:WaitForChild("FlyingRemotes")
+local StartFlyingRemote = FlyingRemotes:WaitForChild("StartFlying")
+local StopFlyingRemote = FlyingRemotes:WaitForChild("StopFlying")
+local UpdateMovementRemote = FlyingRemotes:WaitForChild("UpdateMovement")
 
 function ServerFlyingModule:SetupTrails()
     local limbAttachments = {
