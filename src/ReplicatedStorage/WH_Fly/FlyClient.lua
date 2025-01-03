@@ -45,6 +45,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
 
 -- Get player and character
 local player = Players.LocalPlayer
@@ -59,6 +60,12 @@ local Config = {
     Deceleration = 0.5,
     TurnResistance = 0.9,
     CameraResistance = 0.92,
+    FlyingTimer = {
+        Duration = 30, -- Duration in seconds
+        ChickenModeAt = 10, -- Time remaining when chicken mode activates
+    },
+    AutoFlySpeed = 20, -- Speed for automatic forward movement
+    FloatSpeed = 5, -- Speed for floating down in chicken mode
     CameraConfig = {
         Distance = 15,
         DefaultHeight = 4,
@@ -90,6 +97,10 @@ local state = {
     targetRotation = CFrame.new(),
     currentCameraRotation = CFrame.new(),
     targetCameraRotation = CFrame.new(),
+    timeRemaining = Config.FlyingTimer.Duration,
+    isChickenMode = false,
+    timerUI = nil,
+    timerConnection = nil,
     cameraConfig = {
         currentX = 0,
         currentY = 0,
@@ -136,15 +147,16 @@ local function updateCamera(deltaTime)
     local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
     if not humanoidRootPart then return end
 
-    -- Update camera angles based on mouse movement
-    local delta = UserInputService:GetMouseDelta()
-    
-    state.cameraConfig.currentX = state.cameraConfig.currentX - delta.X * Config.CameraConfig.Sensitivity
-    state.cameraConfig.currentY = math.clamp(
-        state.cameraConfig.currentY - delta.Y * Config.CameraConfig.Sensitivity,
-        Config.CameraConfig.MinY,
-        Config.CameraConfig.MaxY
-    )
+    -- Only update camera with mouse if not in chicken mode
+    if not state.isChickenMode then
+        local delta = UserInputService:GetMouseDelta()
+        state.cameraConfig.currentX = state.cameraConfig.currentX - delta.X * Config.CameraConfig.Sensitivity
+        state.cameraConfig.currentY = math.clamp(
+            state.cameraConfig.currentY - delta.Y * Config.CameraConfig.Sensitivity,
+            Config.CameraConfig.MinY,
+            Config.CameraConfig.MaxY
+        )
+    end
 
     -- Calculate camera position
     local angle = math.rad(state.cameraConfig.currentX)
@@ -164,12 +176,107 @@ local function updateCamera(deltaTime)
     state.currentCameraRotation = state.currentCameraRotation:Lerp(state.targetCameraRotation, 1 - Config.CameraResistance)
     camera.CFrame = state.currentCameraRotation
 
-    -- Update character rotation when moving
-    if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+    -- Always update character rotation to match movement direction
+    if not state.isChickenMode then
         local lookVector = camera.CFrame.LookVector
         state.targetRotation = CFrame.lookAt(humanoidRootPart.Position, humanoidRootPart.Position + lookVector)
         state.currentRotation = state.currentRotation:Lerp(state.targetRotation, 1 - Config.TurnResistance)
         humanoidRootPart.CFrame = CFrame.new(humanoidRootPart.Position) * state.currentRotation.Rotation
+    end
+end
+
+local function createTimerUI()
+    -- Create or get ScreenGui
+    local screenGui = player.PlayerGui:FindFirstChild("FlyingTimerGui")
+    if not screenGui then
+        screenGui = Instance.new("ScreenGui")
+        screenGui.Name = "FlyingTimerGui"
+        screenGui.ResetOnSpawn = false
+        screenGui.Parent = player.PlayerGui
+    end
+
+    -- Create the timer frame
+    local timerFrame = Instance.new("Frame")
+    timerFrame.Size = UDim2.new(0, 200, 0, 10)
+    timerFrame.Position = UDim2.new(0.5, -100, 0.1, 0)
+    timerFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    timerFrame.BorderSizePixel = 0
+    timerFrame.Parent = screenGui
+
+    -- Create the progress bar
+    local progressBar = Instance.new("Frame")
+    progressBar.Size = UDim2.new(1, 0, 1, 0)
+    progressBar.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    progressBar.BorderSizePixel = 0
+    progressBar.Name = "ProgressBar"
+    progressBar.Parent = timerFrame
+
+    -- Add corner radius to both frames
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 5)
+    corner:Clone().Parent = timerFrame
+    corner:Clone().Parent = progressBar
+
+    return timerFrame
+end
+
+local function updateTimerUI()
+    if not state.timerUI then return end
+    
+    local progress = state.timeRemaining / Config.FlyingTimer.Duration
+    local progressBar = state.timerUI:FindFirstChild("ProgressBar")
+    if progressBar then
+        -- Tween the progress bar
+        local tween = TweenService:Create(progressBar, TweenInfo.new(0.1), {
+            Size = UDim2.new(progress, 0, 1, 0)
+        })
+        tween:Play()
+
+        -- Update color based on time remaining
+        if state.timeRemaining <= Config.FlyingTimer.ChickenModeAt then
+            progressBar.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+        else
+            progressBar.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+        end
+    end
+end
+
+local function startTimer()
+    state.timeRemaining = Config.FlyingTimer.Duration
+    state.isChickenMode = false
+    
+    -- Create timer UI if it doesn't exist
+    if not state.timerUI then
+        state.timerUI = createTimerUI()
+    end
+    
+    -- Start the timer countdown
+    state.timerConnection = RunService.Heartbeat:Connect(function(deltaTime)
+        state.timeRemaining = math.max(0, state.timeRemaining - deltaTime)
+        updateTimerUI()
+        
+        -- Check for chicken mode
+        if state.timeRemaining <= Config.FlyingTimer.ChickenModeAt and not state.isChickenMode then
+            state.isChickenMode = true
+            -- Chicken mode logic will be handled in updateMovement
+        end
+        
+        -- Stop flying when timer runs out
+        if state.timeRemaining <= 0 then
+            FlyingClient:Stop()
+        end
+    end)
+end
+
+local function stopTimer()
+    if state.timerConnection then
+        state.timerConnection:Disconnect()
+        state.timerConnection = nil
+    end
+    
+    if state.timerUI then
+        state.timerUI:Destroy()
+        state.timerUI = nil
     end
 end
 
@@ -180,28 +287,44 @@ local function updateMovement(deltaTime)
     local moveDirection = Vector3.new(0, 0, 0)
     local isMoving = false
     
-    if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+    if not state.isChickenMode then
+        -- Always move forward in normal flying mode
         moveDirection = camera.CFrame.LookVector
         isMoving = true
         playAnimation("flying")
+        
+        -- Allow turning with mouse but always move forward
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+            state.cameraConfig.currentX = state.cameraConfig.currentX + (Config.CameraConfig.Sensitivity * 50 * deltaTime)
+        elseif UserInputService:IsKeyDown(Enum.KeyCode.D) then
+            state.cameraConfig.currentX = state.cameraConfig.currentX - (Config.CameraConfig.Sensitivity * 50 * deltaTime)
+        end
     else
-        playAnimation("idle")
+        -- In chicken mode: float down with slight random horizontal movement
+        local time = tick()
+        moveDirection = Vector3.new(
+            math.sin(time) * 0.2, -- Slight horizontal drift
+            -0.8, -- Mainly moving downward
+            math.cos(time) * 0.2  -- Slight horizontal drift
+        ).Unit
+        isMoving = true
+        playAnimation("flying")
+        state.currentSpeed = Config.FloatSpeed -- Use slower speed for floating
     end
     
-    -- Update speed
-    if isMoving then
-        state.currentSpeed = math.min(state.currentSpeed + Config.Acceleration * deltaTime, Config.MaxSpeed)
-    else
-        state.currentSpeed = math.max(state.currentSpeed - Config.Deceleration * deltaTime, 0)
+    -- Update speed for normal flying
+    if isMoving and not state.isChickenMode then
+        state.currentSpeed = Config.AutoFlySpeed -- Use constant speed for auto-flying
     end
     
     -- Apply movement
-    if state.currentSpeed > 0 then
+    if isMoving then
         moveDirection = moveDirection.Unit * state.currentSpeed
         UpdateMovementRemote:FireServer({
             X = moveDirection.X,
             Y = moveDirection.Y,
-            Z = moveDirection.Z
+            Z = moveDirection.Z,
+            isChickenMode = state.isChickenMode
         })
     end
 end
@@ -237,6 +360,7 @@ function FlyingClient:Start()
     StartFlyingRemote:FireServer()
     startMouseControl()
     playAnimation("idle")
+    startTimer()
     
     -- Initialize camera before starting the update loop
     initializeCamera()
@@ -250,9 +374,15 @@ end
 function FlyingClient:Stop()
     if not state.isFlying then return end
     
+    -- Only allow stopping if not in timer mode or if timer has run out
+    if state.timeRemaining > 0 and state.timerConnection then
+        return
+    end
+    
     state.isFlying = false
     StopFlyingRemote:FireServer()
     stopMouseControl()
+    stopTimer()
     
     -- Stop all current animations with proper fade out
     local animator = humanoid:FindFirstChild("Animator")

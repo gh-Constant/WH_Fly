@@ -15,6 +15,7 @@ function ServerFlyingModule.new(player)
     self.IsFlying = false
     self.IsMoving = false
     self.FlySpeed = 65
+    self.ChickenFlySpeed = 15 -- Slower speed for floating down
     self.MinGroundHeight = 5
     self.Character = player.Character or player.CharacterAdded:Wait()
     self.HumanoidRootPart = self.Character:WaitForChild("HumanoidRootPart")
@@ -22,6 +23,7 @@ function ServerFlyingModule.new(player)
     self.Trails = {}
     self.LastMovementTime = 0
     self.MovementThreshold = 0.1
+    self.IsChickenMode = false
     return self
 end
 
@@ -202,11 +204,27 @@ function ServerFlyingModule:UpdateMovement(moveData)
 
     -- Update physics
     if self.IsMoving then
-        moveDirection = moveDirection.Unit * self.FlySpeed
+        -- Use chicken speed if in chicken mode
+        local currentSpeed = self.IsChickenMode and self.ChickenFlySpeed or self.FlySpeed
+        moveDirection = moveDirection.Unit * currentSpeed
         self.BodyVelocity.Velocity = moveDirection
         
         local lookAt = self.HumanoidRootPart.Position + moveDirection
-        local targetCF = CFrame.lookAt(self.HumanoidRootPart.Position, lookAt) * CFrame.Angles(math.rad(-45), 0, 0)
+        local targetCF = CFrame.lookAt(self.HumanoidRootPart.Position, lookAt)
+        
+        -- In chicken mode, add slight tilt but mainly just fall
+        if self.IsChickenMode then
+            local time = tick()
+            local wobble = CFrame.Angles(
+                math.sin(time * 2) * 0.1, -- Slight tilt
+                0,
+                math.cos(time * 2) * 0.1  -- Slight tilt
+            )
+            targetCF = targetCF * wobble
+        else
+            targetCF = targetCF * CFrame.Angles(math.rad(-15), 0, 0) -- Less steep angle for forward flight
+        end
+        
         self.BodyGyro.CFrame = targetCF
     else
         self.BodyVelocity.Velocity = Vector3.new(0, 0, 0)
@@ -258,6 +276,10 @@ end)
 UpdateMovementRemote.OnServerEvent:Connect(function(player, moveData)
     local flyingModule = ActiveFlyers[player]
     if flyingModule then
+        -- Check if the moveData includes chicken mode state
+        if moveData.isChickenMode ~= nil then
+            flyingModule.IsChickenMode = moveData.isChickenMode
+        end
         flyingModule:UpdateMovement(moveData)
     end
 end)
