@@ -1,3 +1,0 @@
-local SettingsModule = {}
-
-return SettingsModule
